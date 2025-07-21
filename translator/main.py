@@ -45,7 +45,13 @@ def write_translations(*, trans_dir, lang, ns, translations):
         "w",
         encoding="utf8",
     ) as h:
-        json.dump(translations, h, ensure_ascii=False, indent=2)
+        json.dump(
+            translations,
+            h,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
 
 
 def load_source(source_trans):
