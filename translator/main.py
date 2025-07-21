@@ -5,6 +5,7 @@ import os
 import pathlib
 import time
 from datetime import timedelta
+import dotenv
 
 import openai
 from tqdm import tqdm
@@ -77,6 +78,11 @@ def main() -> None:
         help="LLM model to use for translation",
     )
 
+    parser.add_argument(
+        "--dotenv", type=pathlib.Path,
+        help="Load environment variables from .env file",
+    )
+
     args = parser.parse_args()
 
     trans_dir = args.trans_dir
@@ -89,6 +95,9 @@ def main() -> None:
     def sync_cache():
         with open(cache_file, "w") as h:
             json.dump(cache, h, indent=2)
+
+    if args.dotenv:
+        dotenv.load_dotenv(args.dotenv)
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
