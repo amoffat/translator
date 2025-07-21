@@ -173,9 +173,8 @@ def main() -> None:
                     sync_cache()
 
                 for key, to_translate, context in entries:
-                    cur_translation = lang_translations.get(key)
-                    cache_entry = cache_entries.setdefault(key, {})
 
+                    cache_entry = cache_entries.setdefault(key, {})
                     cur_input_hash = h(to_translate + (context or ""))
 
                     langs_hashes = cache_entry.setdefault("hashes", {})
@@ -183,6 +182,15 @@ def main() -> None:
 
                     last_input_hash = lang_hashes.get("input")
                     last_output_hash = lang_hashes.get("output")
+
+                    # If we're the primary language, set us up so that
+                    # needs_translation will not be true
+                    if is_primary_lang:
+                        cur_translation = to_translate
+                        last_output_hash = h(to_translate)
+                        last_input_hash = cur_input_hash
+                    else:
+                        cur_translation = lang_translations.get(key)
 
                     if not cur_translation:
                         needs_translation = True
@@ -192,7 +200,7 @@ def main() -> None:
                         hashes_match = in_matches and out_matches
                         needs_translation = not hashes_match
 
-                    if needs_translation and not is_primary_lang:
+                    if needs_translation:
                         try:
                             time.sleep(0.5)
                             updated_translation = llm.translate(
