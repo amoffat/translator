@@ -73,7 +73,7 @@ def main() -> None:
         "--trans-dir",
         type=pathlib.Path,
         required=True,
-        help="Directory for translation output",
+        help="Directory for translations",
     )
     parser.add_argument(
         "--model",
