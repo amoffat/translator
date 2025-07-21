@@ -35,11 +35,11 @@ def translate(
     client: Client,
     dest_code: str,
     to_translate: str,
-    desc: str | None = None,
+    context: str | None = None,
 ):
     dest_lang = SUPPORTED_LANGS[dest_code]
-    if desc:
-        context = f"<context>{desc}</context>"
+    if context:
+        context = f"<context>{context}</context>"
     else:
         context = ""
 

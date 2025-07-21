@@ -50,8 +50,12 @@ def write_translations(*, trans_dir, lang, ns, translations):
 
 def load_source(source_trans):
     with open(source_trans, "r", encoding="utf8") as h:
-        source = json.load(h)
-    return source
+        entries = json.load(h)
+
+    for key, value in entries.items():
+        if not key.endswith("_"):
+            ctx = entries.get(key + "_")
+            yield key, value, ctx
 
 
 def h(text):
@@ -113,7 +117,8 @@ def main() -> None:
     num_trans_langs = len(SUPPORTED_LANGS)
     for source in source_entries(trans_dir / "main"):
         entries = load_source(source)
-        total_entries += len(entries)
+        total_entries += len(list(entries))
+
     total_translations = total_entries * num_trans_langs
 
     primary_lang: str | None = cache.get("lang")
@@ -121,7 +126,7 @@ def main() -> None:
     source = next(source_entries(trans_dir / "main"))
     if not primary_lang:
         entries = load_source(next(source_entries(trans_dir / "main")))
-        sample = "\n".join(list(entries.values())[:10][:500])
+        sample = "\n".join([value for _, value, _ in list(entries)[:10]][:500])
         primary_lang = llm.detect_lang(client=client, text=sample)
         assert primary_lang, "Failed to detect primary language"
         tqdm.write(f"Detected language: {primary_lang}")
@@ -167,11 +172,11 @@ def main() -> None:
                 cache_entries = cache.setdefault("entries", {})
                 tqdm.write(f"Translating to {lang_name} ({lang_code})...")
 
-                for key, to_translate in entries.items():
+                for key, to_translate, context in entries:
                     cur_translation = ns_translations.get(key)
                     cache_entry = cache_entries.setdefault(key, {})
 
-                    input_hash = h(to_translate)
+                    input_hash = h(to_translate + (context or ""))
 
                     langs_hashes = cache_entry.setdefault("hashes", {})
                     lang_hashes = langs_hashes.setdefault(lang_code, {})
@@ -192,6 +197,7 @@ def main() -> None:
                             time.sleep(0.5)
                             updated_translation = llm.translate(
                                 client=client,
+                                context=context,
                                 dest_code=lang_code,
                                 to_translate=to_translate,
                             )
