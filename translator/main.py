@@ -27,7 +27,7 @@ def load_translations(*, trans_dir, lang, ns):
     try:
         with open(path, "r", encoding="utf8") as h:
             return json.load(h)
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
