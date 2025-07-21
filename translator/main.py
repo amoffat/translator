@@ -158,6 +158,14 @@ def main() -> None:
                     lang=lang_code,
                     ns=ns,
                 )
+
+                # cleanup old translations
+                old_keys = set(lang_translations.keys())
+                active_keys = {key for key, _, _ in entries}
+                to_remove = old_keys - active_keys
+                for key in to_remove:
+                    del lang_translations[key]
+
                 is_primary_lang = lang_code == primary_lang
 
                 cache_entries = cache.setdefault("entries", {})
