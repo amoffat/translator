@@ -50,12 +50,15 @@ def write_translations(*, trans_dir, lang, ns, translations):
 
 def load_source(source_trans):
     with open(source_trans, "r", encoding="utf8") as h:
-        entries = json.load(h)
+        raw_entries = json.load(h)
 
-    for key, value in entries.items():
+    entries = []
+    for key, value in raw_entries.items():
         if not key.endswith("_"):
-            ctx = entries.get(key + "_")
-            yield key, value, ctx
+            ctx = raw_entries.get(key + "_")
+            entries.append((key, value, ctx))
+
+    return entries
 
 
 def h(text):
@@ -117,7 +120,7 @@ def main() -> None:
     num_trans_langs = len(SUPPORTED_LANGS)
     for source in source_entries(trans_dir / "main"):
         entries = load_source(source)
-        total_entries += len(list(entries))
+        total_entries += len(entries)
 
     total_translations = total_entries * num_trans_langs
 
@@ -126,7 +129,7 @@ def main() -> None:
     source = next(source_entries(trans_dir / "main"))
     if not primary_lang:
         entries = load_source(next(source_entries(trans_dir / "main")))
-        sample = "\n".join([value for _, value, _ in list(entries)[:10]][:500])
+        sample = "\n".join([value for _, value, _ in entries[:10]][:500])
         primary_lang = llm.detect_lang(client=client, text=sample)
         assert primary_lang, "Failed to detect primary language"
         tqdm.write(f"Detected language: {primary_lang}")
@@ -149,50 +152,47 @@ def main() -> None:
             ns = source.stem
             entries = load_source(source)
 
-            write_translations(
-                trans_dir=trans_dir,
-                lang=primary_lang,
-                ns=ns,
-                translations=entries,
-            )
-
             for lang_code, lang_name in SUPPORTED_LANGS.items():
-                if lang_code == primary_lang:
-                    tqdm.write(
-                        f"Skipping translation for primary language: {lang_name} ({lang_code})"
-                    )
-                    continue
-
-                # These will be saved to the locale file
-                ns_translations = load_translations(
+                lang_translations = load_translations(
                     trans_dir=trans_dir,
                     lang=lang_code,
                     ns=ns,
                 )
+                is_primary_lang = lang_code == primary_lang
+
                 cache_entries = cache.setdefault("entries", {})
                 tqdm.write(f"Translating to {lang_name} ({lang_code})...")
 
+                def write():
+                    write_translations(
+                        trans_dir=trans_dir,
+                        lang=lang_code,
+                        ns=ns,
+                        translations=lang_translations,
+                    )
+                    sync_cache()
+
                 for key, to_translate, context in entries:
-                    cur_translation = ns_translations.get(key)
+                    cur_translation = lang_translations.get(key)
                     cache_entry = cache_entries.setdefault(key, {})
 
-                    input_hash = h(to_translate + (context or ""))
+                    cur_input_hash = h(to_translate + (context or ""))
 
                     langs_hashes = cache_entry.setdefault("hashes", {})
                     lang_hashes = langs_hashes.setdefault(lang_code, {})
 
-                    in_hash = lang_hashes.get("input")
-                    out_hash = lang_hashes.get("output")
+                    last_input_hash = lang_hashes.get("input")
+                    last_output_hash = lang_hashes.get("output")
 
                     if not cur_translation:
                         needs_translation = True
                     else:
-                        in_matches = in_hash == input_hash
-                        out_matches = out_hash == h(cur_translation)
+                        in_matches = last_input_hash == cur_input_hash
+                        out_matches = last_output_hash == h(cur_translation)
                         hashes_match = in_matches and out_matches
                         needs_translation = not hashes_match
 
-                    if needs_translation:
+                    if needs_translation and not is_primary_lang:
                         try:
                             time.sleep(0.5)
                             updated_translation = llm.translate(
@@ -204,6 +204,7 @@ def main() -> None:
                             assert updated_translation, "Translation failed"
 
                         except KeyboardInterrupt:
+                            write()
                             tqdm.write(
                                 "Translation interrupted by user, quitting")
                             exit()
@@ -217,23 +218,15 @@ def main() -> None:
                             tqdm.write(
                                 f'    Translated `{key}` to "{updated_translation}"'
                             )
-
-                        out_hash = h(updated_translation)
-                        lang_hashes["output"] = out_hash
-                        lang_hashes["input"] = input_hash
                     else:
                         updated_translation = cur_translation
 
-                    ns_translations[key] = updated_translation
-
-                    write_translations(
-                        trans_dir=trans_dir,
-                        lang=lang_code,
-                        ns=ns,
-                        translations=ns_translations,
-                    )
-                    sync_cache()
+                    lang_hashes["output"] = h(updated_translation)
+                    lang_hashes["input"] = cur_input_hash
+                    lang_translations[key] = updated_translation
                     processed += 1
+
+                    write()
 
                     # Progress bar update and ETA
                     elapsed = time.time() - start_time
