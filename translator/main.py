@@ -136,9 +136,6 @@ def main() -> None:
         cache["lang"] = primary_lang
         sync_cache()
 
-    if primary_lang in SUPPORTED_LANGS:
-        total_translations -= total_entries
-
     processed = 0
     start_time = time.time()
     with tqdm(
