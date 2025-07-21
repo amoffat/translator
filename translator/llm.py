@@ -53,12 +53,14 @@ English to {dest_lang} ({dest_code}):
 </translate>
 
 * Try to preserve the original meaning and intent of the text.
-* If emojis exist in the text, try to keep them in the translation.
+* If emojis exist in the text, try to keep them in the translation, \
+but do not add new emojis.
 * Preserve all numeric tags, like <1>, <2>, etc. \
 These are i18next html placeholders.
 * Do not translate text inside of double curly brace templates: {{{{...}}}}. \
 These are i18next template placeholders and we need to leave them as-is.
-* Do not translate the context, only the contents of <text>...</text>.
+* Do not translate the <context> tag, if there is one. \
+Only the contents of <text>...</text>.
 
 Format your response as the following XML document:
 
