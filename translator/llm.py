@@ -38,18 +38,15 @@ def translate(
     context: str | None = None,
 ):
     dest_lang = SUPPORTED_LANGS[dest_code]
-    if context:
-        context = f"<context>{context}</context>"
-    else:
-        context = ""
+    context = f"<context>{context or ''}</context>"
 
     prompt = f"""
-Translate the text in the <text>...</text> tag below from \
+Translate the text in the <to_translate>...</to_translate> tag below from \
 English to {dest_lang} ({dest_code}):
 
 <translate>
     {context}
-    <text>{to_translate}</text>
+    <to_translate>{to_translate}</to_translate>
 </translate>
 
 * Try to preserve the original meaning and intent of the text.
@@ -59,23 +56,26 @@ but do not add new emojis.
 These are i18next html placeholders.
 * Do not translate text inside of double curly brace templates: {{{{...}}}}. \
 These are i18next template placeholders and we need to leave them as-is.
-* Do not translate the <context> tag, if there is one. \
-Only the contents of <text>...</text>.
-* Do not reference the contents of <context> in the translation. It is only to \
-help you make a more accurate translation.
+* Do not translate the <context> tag. Only translate the contents of the <to_translate> tag.
+* Do not reference the contents of the <context> tag in the translation.
+The <context> tag is only to help you translate <to_translate> more accurately.
 
 Format your response as the following XML document:
 
-<translated>
-    <text>...</text>
-</translated>
+<root>
+    <translated>
+        Translated text goes here, preserving the original meaning and intent.
+    </translated>
+</root>
+
+Where the contents of <translated> is the translated text.
 """.strip()
 
     resp = complete(client=client, prompt=prompt)
     resp = parser.escape_placeholder_tags(resp)
-    doc = parser.find_and_parse_xml(resp, root_tag="translated")
+    doc = parser.find_and_parse_xml(resp, root_tag="root")
 
-    text = doc.find("text")
+    text = doc.find("translated")
     if text is not None:
         translated = parser.render_inner(text)
         translated = parser.unescape_placeholder_tags(translated)
