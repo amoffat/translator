@@ -61,6 +61,8 @@ These are i18next html placeholders.
 These are i18next template placeholders and we need to leave them as-is.
 * Do not translate the <context> tag, if there is one. \
 Only the contents of <text>...</text>.
+* Do not reference the contents of <context> in the translation. It is only to \
+help you make a more accurate translation.
 
 Format your response as the following XML document:
 
