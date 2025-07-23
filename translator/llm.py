@@ -56,6 +56,7 @@ but do not add new emojis.
 These are i18next html placeholders.
 * Do not translate text inside of double curly brace templates: {{{{...}}}}. \
 These are i18next template placeholders and we need to leave them as-is.
+* To not translate urls. Leave them as-is.
 * Do not translate the <context> tag. Only translate the contents of the <to_translate> tag.
 * Do not reference the contents of the <context> tag in the translation.
 The <context> tag is only to help you translate <to_translate> more accurately.
