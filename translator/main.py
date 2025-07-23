@@ -228,11 +228,6 @@ def main() -> None:
                                 "Translation interrupted by user, quitting")
                             exit()
 
-                        except:  # noqa
-                            tqdm.write(
-                                f"    Failed to translate `{key}`, using english"
-                            )
-                            updated_translation = to_translate
                         else:
                             tqdm.write(
                                 f'    Translated `{key}` to "{updated_translation}"'
