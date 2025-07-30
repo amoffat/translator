@@ -50,8 +50,7 @@ English to {dest_lang} ({dest_code}):
 </translate>
 
 * Try to preserve the original meaning and intent of the text.
-* If emojis exist in the text, try to keep them in the translation, \
-but do not add new emojis.
+* Do not add new emojis, unless they exist in the text to be translated.
 * Preserve all numeric tags, like <1>, <2>, etc. \
 These are i18next html placeholders.
 * Do not translate text inside of double curly brace templates: {{{{...}}}}. \
