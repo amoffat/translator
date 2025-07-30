@@ -1,9 +1,11 @@
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import pathlib
 import time
 from datetime import timedelta
+from collections import OrderedDict
 import dotenv
 
 import openai
@@ -23,31 +25,42 @@ def translation_path(*, trans_dir, lang, ns):
 
 def load_translations(*, trans_dir, lang, ns) -> dict[str, dict]:
     path = translation_path(trans_dir=trans_dir, lang=lang, ns=ns)
-    translations = {}
+    translations = OrderedDict()
+    lines = []
     try:
         with open(path, "r", encoding="utf8") as h:
             for line in h:
                 try:
                     obj = json.loads(line)
-                    translations[obj["k"]] = obj
+                    lines.append(obj)
                 except json.JSONDecodeError:
                     continue
+
+        # sort lines by key
+        lines = sorted(lines, key=lambda x: x.get("k", ""))
+        for obj in lines:
+            translations[obj["k"]] = obj
+
         return translations
+
     except FileNotFoundError:
-        return {}
+        return translations
 
 
-def write_translations(*, trans_dir, lang, ns, translations: dict[str, dict]) -> None:
+@contextmanager
+def get_trans_writer(*, trans_dir, lang, ns, translations: dict[str, dict]):
     d = locale_dir(trans_dir=trans_dir, lang=lang)
     if not d.exists():
         d.mkdir(parents=True, exist_ok=True)
 
     path = translation_path(trans_dir=trans_dir, lang=lang, ns=ns)
     with open(path, "w", encoding="utf8") as h:
-        keys = sorted(translations.keys())
-        for key in keys:
-            obj = translations[key]
-            h.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+        def write(entry):
+            h.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            h.flush()
+
+        yield write
 
 
 def source_files(dir):
@@ -129,96 +142,87 @@ def main() -> None:
             )
 
             for lang_code, lang_name in SUPPORTED_LANGS.items():
+                is_primary_lang = lang_code == primary_lang
+
                 lang_translations = load_translations(
                     trans_dir=trans_dir,
                     lang=lang_code,
                     ns=ns,
                 )
 
-                # cleanup old translations
-                old_keys = set(lang_translations.keys())
-                active_keys = set(entries.keys())
-                to_remove = old_keys - active_keys
-                for key in to_remove:
-                    lang_translations.pop(key, None)
-
-                is_primary_lang = lang_code == primary_lang
-
                 tqdm.write(f"Translating to {lang_name} ({lang_code})...")
 
-                def write():
-                    write_translations(
-                        trans_dir=trans_dir,
-                        lang=lang_code,
-                        ns=ns,
-                        translations=lang_translations,
-                    )
+                with get_trans_writer(
+                    trans_dir=trans_dir,
+                    lang=lang_code,
+                    ns=ns,
+                    translations=lang_translations,
+                ) as write:
 
-                for source_entry in entries.values():
-                    key = source_entry["k"]
-                    to_translate = source_entry["v"]
-                    context = source_entry.get("ctx")
-                    trans_entry = lang_translations.setdefault(key, {})
+                    for source_entry in entries.values():
+                        key = source_entry["k"]
+                        to_translate = source_entry["v"]
+                        context = source_entry.get("ctx")
+                        trans_entry = lang_translations.get(key, {})
 
-                    locked = trans_entry.get("lock", False)
+                        locked = trans_entry.get("lock", False)
 
-                    cur_trans = None
-                    if is_primary_lang:
-                        cur_trans = to_translate
-                    elif trans_entry:
-                        cur_trans = trans_entry.get("v")
+                        cur_trans = None
+                        if is_primary_lang:
+                            cur_trans = to_translate
+                        elif trans_entry:
+                            cur_trans = trans_entry.get("v")
 
-                    if not cur_trans:
-                        needs_translation = True
-                    # If primary language, no translation needed
-                    elif is_primary_lang:
-                        needs_translation = False
-                    else:
-                        same_ctx = context == trans_entry.get("ctx")
-                        same_trans = to_translate == trans_entry.get("original")
-                        inputs_match = same_ctx and same_trans
-                        needs_translation = not inputs_match
-
-                    if needs_translation and not locked:
-                        try:
-                            time.sleep(0.5)
-                            updated_translation = llm.translate(
-                                client=client,
-                                context=context,
-                                dest_code=lang_code,
-                                to_translate=to_translate,
-                            )
-                            assert updated_translation, "Translation failed"
-                        except KeyboardInterrupt:
-                            write()
-                            tqdm.write("Translation interrupted by user, quitting")
-                            exit()
+                        if not cur_trans:
+                            needs_translation = True
+                        # If primary language, no translation needed
+                        elif is_primary_lang:
+                            needs_translation = False
                         else:
-                            tqdm.write(
-                                f'    Translated `{key}` to "{updated_translation}"'
-                            )
-                    else:
-                        updated_translation = cur_trans
+                            same_ctx = context == trans_entry.get("ctx")
+                            same_trans = to_translate == trans_entry.get("original")
+                            inputs_match = same_ctx and same_trans
+                            needs_translation = not inputs_match
 
-                    lang_translations[key] = {
-                        "k": key,
-                        "v": updated_translation,
-                        "original": to_translate,
-                        "ctx": context,
-                        "lock": locked,
-                    }
-                    processed += 1
+                        if needs_translation and not locked:
+                            try:
+                                time.sleep(0.5)
+                                updated_translation = llm.translate(
+                                    client=client,
+                                    context=context,
+                                    dest_code=lang_code,
+                                    to_translate=to_translate,
+                                )
+                                assert updated_translation, "Translation failed"
+                            except KeyboardInterrupt:
+                                tqdm.write("Translation interrupted by user, quitting")
+                                exit()
+                            else:
+                                tqdm.write(
+                                    f'    Translated `{key}` to "{updated_translation}"'
+                                )
+                        else:
+                            updated_translation = cur_trans
 
-                    write()
+                        write(
+                            {
+                                "k": key,
+                                "v": updated_translation,
+                                "original": to_translate,
+                                "ctx": context,
+                                "lock": locked,
+                            }
+                        )
+                        processed += 1
 
-                    # Progress bar update and ETA
-                    elapsed = time.time() - start_time
-                    if processed > 0:
-                        rate = elapsed / processed
-                        remaining = total_translations - processed
-                        eta = timedelta(seconds=int(rate * remaining))
-                        pbar.set_postfix({"ETA": str(eta)})
-                    pbar.update(1)
+                        # Progress bar update and ETA
+                        elapsed = time.time() - start_time
+                        if processed > 0:
+                            rate = elapsed / processed
+                            remaining = total_translations - processed
+                            eta = timedelta(seconds=int(rate * remaining))
+                            pbar.set_postfix({"ETA": str(eta)})
+                        pbar.update(1)
 
 
 if __name__ == "__main__":
