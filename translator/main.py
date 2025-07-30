@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import json
 import os
 import pathlib
@@ -19,60 +18,40 @@ def locale_dir(*, trans_dir, lang) -> pathlib.Path:
 
 
 def translation_path(*, trans_dir, lang, ns):
-    return locale_dir(trans_dir=trans_dir, lang=lang) / f"{ns}.json"
+    return locale_dir(trans_dir=trans_dir, lang=lang) / f"{ns}.jsonl"
 
 
-def load_translations(*, trans_dir, lang, ns):
+def load_translations(*, trans_dir, lang, ns) -> dict[str, dict]:
     path = translation_path(trans_dir=trans_dir, lang=lang, ns=ns)
+    translations = {}
     try:
         with open(path, "r", encoding="utf8") as h:
-            return json.load(h)
-    except (FileNotFoundError, json.JSONDecodeError):
+            for line in h:
+                try:
+                    obj = json.loads(line)
+                    translations[obj["k"]] = obj
+                except json.JSONDecodeError:
+                    continue
+        return translations
+    except FileNotFoundError:
         return {}
 
 
-def write_translations(*, trans_dir, lang, ns, translations):
+def write_translations(*, trans_dir, lang, ns, translations: dict[str, dict]) -> None:
     d = locale_dir(trans_dir=trans_dir, lang=lang)
     if not d.exists():
         d.mkdir(parents=True, exist_ok=True)
 
-    with open(
-        translation_path(
-            trans_dir=trans_dir,
-            lang=lang,
-            ns=ns,
-        ),
-        "w",
-        encoding="utf8",
-    ) as h:
-        json.dump(
-            translations,
-            h,
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        )
+    path = translation_path(trans_dir=trans_dir, lang=lang, ns=ns)
+    with open(path, "w", encoding="utf8") as h:
+        keys = sorted(translations.keys())
+        for key in keys:
+            obj = translations[key]
+            h.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
-def load_source(source_trans):
-    with open(source_trans, "r", encoding="utf8") as h:
-        raw_entries = json.load(h)
-
-    entries = []
-    for key, value in raw_entries.items():
-        if not key.endswith("_"):
-            ctx = raw_entries.get(key + "_")
-            entries.append((key, value, ctx))
-
-    return entries
-
-
-def h(text):
-    return hashlib.sha1(text.encode()).hexdigest()
-
-
-def source_entries(dir):
-    for file in dir.glob("*.json"):
+def source_files(dir):
+    for file in dir.glob("*.jsonl"):
         yield file
 
 
@@ -92,55 +71,45 @@ def main() -> None:
     )
 
     parser.add_argument(
-        "--dotenv", type=pathlib.Path,
+        "--dotenv",
+        type=pathlib.Path,
         help="Load environment variables from .env file",
     )
 
     args = parser.parse_args()
-
     trans_dir = args.trans_dir
-    cache_file = trans_dir / "cache.json"
-    if cache_file.exists():
-        cache = json.load(open(cache_file, "r"))
-    else:
-        cache = {}
-
-    def sync_cache():
-        with open(cache_file, "w") as h:
-            json.dump(cache, h, indent=2)
 
     if args.dotenv:
         dotenv.load_dotenv(args.dotenv)
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError(
-            "OPENAI_API_KEY environment variable is not set in .env")
+        raise ValueError("OPENAI_API_KEY environment variable is not set in .env")
 
     client = llm.Client(
         openai_client=openai.OpenAI(api_key=api_key),
         model=args.model,
     )
 
+    entries: dict[str, dict] | None = None
     total_entries = 0
     num_trans_langs = len(SUPPORTED_LANGS)
-    for source in source_entries(trans_dir / "main"):
-        entries = load_source(source)
+    for source in source_files(trans_dir / "main"):
+        entries = load_translations(
+            trans_dir=trans_dir,
+            lang="main",
+            ns=source.stem,
+        )
         total_entries += len(entries)
 
+    assert entries, "No source translations found"
     total_translations = total_entries * num_trans_langs
 
-    primary_lang: str | None = cache.get("lang")
-
-    source = next(source_entries(trans_dir / "main"))
-    if not primary_lang:
-        entries = load_source(next(source_entries(trans_dir / "main")))
-        sample = "\n".join([value for _, value, _ in entries[:10]][:500])
-        primary_lang = llm.detect_lang(client=client, text=sample)
-        assert primary_lang, "Failed to detect primary language"
-        tqdm.write(f"Detected language: {primary_lang}")
-        cache["lang"] = primary_lang
-        sync_cache()
+    # detect primary language
+    sample = "\n".join([obj["v"] for obj in list(entries.values())[:10]][:500])
+    primary_lang = llm.detect_lang(client=client, text=sample)
+    assert primary_lang, "Failed to detect primary language"
+    tqdm.write(f"Detected language: {primary_lang}")
 
     processed = 0
     start_time = time.time()
@@ -151,9 +120,13 @@ def main() -> None:
         desc="Translating",
         unit="entry",
     ) as pbar:
-        for source in source_entries(trans_dir / "main"):
+        for source in source_files(trans_dir / "main"):
             ns = source.stem
-            entries = load_source(source)
+            entries = load_translations(
+                trans_dir=trans_dir,
+                lang="main",
+                ns=ns,
+            )
 
             for lang_code, lang_name in SUPPORTED_LANGS.items():
                 lang_translations = load_translations(
@@ -164,14 +137,13 @@ def main() -> None:
 
                 # cleanup old translations
                 old_keys = set(lang_translations.keys())
-                active_keys = {key for key, _, _ in entries}
+                active_keys = set(entries.keys())
                 to_remove = old_keys - active_keys
                 for key in to_remove:
-                    del lang_translations[key]
+                    lang_translations.pop(key, None)
 
                 is_primary_lang = lang_code == primary_lang
 
-                cache_entries = cache.setdefault("entries", {})
                 tqdm.write(f"Translating to {lang_name} ({lang_code})...")
 
                 def write():
@@ -181,37 +153,33 @@ def main() -> None:
                         ns=ns,
                         translations=lang_translations,
                     )
-                    sync_cache()
 
-                for key, to_translate, context in entries:
+                for source_entry in entries.values():
+                    key = source_entry["k"]
+                    to_translate = source_entry["v"]
+                    context = source_entry.get("ctx")
+                    trans_entry = lang_translations.setdefault(key, {})
 
-                    cache_entry = cache_entries.setdefault(key, {})
-                    cur_input_hash = h(to_translate + (context or ""))
+                    locked = trans_entry.get("lock", False)
 
-                    langs_hashes = cache_entry.setdefault("hashes", {})
-                    lang_hashes = langs_hashes.setdefault(lang_code, {})
-
-                    last_input_hash = lang_hashes.get("input")
-                    last_output_hash = lang_hashes.get("output")
-
-                    # If we're the primary language, set us up so that
-                    # needs_translation will not be true
+                    cur_trans = None
                     if is_primary_lang:
-                        cur_translation = to_translate
-                        last_output_hash = h(to_translate)
-                        last_input_hash = cur_input_hash
-                    else:
-                        cur_translation = lang_translations.get(key)
+                        cur_trans = to_translate
+                    elif trans_entry:
+                        cur_trans = trans_entry.get("v")
 
-                    if not cur_translation:
+                    if not cur_trans:
                         needs_translation = True
+                    # If primary language, no translation needed
+                    elif is_primary_lang:
+                        needs_translation = False
                     else:
-                        in_matches = last_input_hash == cur_input_hash
-                        out_matches = last_output_hash == h(cur_translation)
-                        hashes_match = in_matches and out_matches
-                        needs_translation = not hashes_match
+                        same_ctx = context == trans_entry.get("ctx")
+                        same_trans = to_translate == trans_entry.get("original")
+                        inputs_match = same_ctx and same_trans
+                        needs_translation = not inputs_match
 
-                    if needs_translation:
+                    if needs_translation and not locked:
                         try:
                             time.sleep(0.5)
                             updated_translation = llm.translate(
@@ -221,23 +189,24 @@ def main() -> None:
                                 to_translate=to_translate,
                             )
                             assert updated_translation, "Translation failed"
-
                         except KeyboardInterrupt:
                             write()
-                            tqdm.write(
-                                "Translation interrupted by user, quitting")
+                            tqdm.write("Translation interrupted by user, quitting")
                             exit()
-
                         else:
                             tqdm.write(
                                 f'    Translated `{key}` to "{updated_translation}"'
                             )
                     else:
-                        updated_translation = cur_translation
+                        updated_translation = cur_trans
 
-                    lang_hashes["output"] = h(updated_translation)
-                    lang_hashes["input"] = cur_input_hash
-                    lang_translations[key] = updated_translation
+                    lang_translations[key] = {
+                        "k": key,
+                        "v": updated_translation,
+                        "original": to_translate,
+                        "ctx": context,
+                        "lock": locked,
+                    }
                     processed += 1
 
                     write()
