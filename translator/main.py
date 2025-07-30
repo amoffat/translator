@@ -92,8 +92,8 @@ def main() -> None:
     parser.add_argument(
         "--rpm",
         type=int,
-        default=30,
-        help="Maximum translations per minute (default: 30)",
+        default=500,
+        help="Maximum translations per minute (default: 500)",
     )
 
     args = parser.parse_args()
