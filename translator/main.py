@@ -89,8 +89,18 @@ def main() -> None:
         help="Load environment variables from .env file",
     )
 
+    parser.add_argument(
+        "--rpm",
+        type=int,
+        default=30,
+        help="Maximum translations per minute (default: 30)",
+    )
+
     args = parser.parse_args()
     trans_dir = args.trans_dir
+
+    rpm = args.rpm
+    sleep_time = 60.0 / rpm if rpm > 0 else 0.0
 
     if args.dotenv:
         dotenv.load_dotenv(args.dotenv)
@@ -186,7 +196,8 @@ def main() -> None:
 
                         if needs_translation and not locked:
                             try:
-                                time.sleep(0.5)
+                                if sleep_time > 0:
+                                    time.sleep(sleep_time)
                                 updated_translation = llm.translate(
                                     client=client,
                                     context=context,
