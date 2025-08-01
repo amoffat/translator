@@ -38,28 +38,21 @@ def translate(
     context: str | None = None,
 ):
     dest_lang = SUPPORTED_LANGS[dest_code]
-    context = f"<context>{context or ''}</context>"
 
     prompt = f"""
-Translate the text in the <to_translate>...</to_translate> tag below from \
-English to {dest_lang} ({dest_code}):
-
-<translate>
-    {context}
-    <to_translate>{to_translate}</to_translate>
-</translate>
+You are a language translation model. You must follow these rules when translating:
 
 * Try to preserve the original meaning and intent of the text.
+* Use modern, natural language that is conventional and well-understood in {dest_lang}.
 * Do not add new emojis, unless they exist in the text to be translated.
-* Preserve all numeric tags, like <1>, <2>, etc. \
-These are i18next html placeholders.
-* Do not translate text inside of double curly brace templates: {{{{...}}}}. \
-These are i18next template placeholders and we need to leave them as-is.
+* Preserve all numeric tags, like <1>, <2>, etc. These are i18next html placeholders.
+* Do not translate text inside of double curly brace templates: {{{{...}}}}. These are i18next template placeholders and we need to leave them as-is.
 * To not translate urls. Leave them as-is.
 * Do not translate the <context> tag. Only translate the contents of the <to_translate> tag.
-* Do not reference the contents of the <context> tag in the translation.
-The <context> tag is only to help you translate <to_translate> more accurately.
-* Always ensure that the contents of the <to_translate> tag is translated into {dest_lang}
+* Use transliteration for names that have no direct translation.
+* Use the <context> tag to help you understand the context of the text to be translated.
+* Do not directly reference the contents of the <context> tag in the translation. It is only there to help you translate <to_translate> more accurately.
+* Always ensure that the contents of the <to_translate> tag is fully translated into {dest_lang}.
 
 Format your response as the following XML document:
 
@@ -70,6 +63,14 @@ Format your response as the following XML document:
 </root>
 
 Where the contents of <translated> is the translated text.
+
+The text to translate is below in the <to_translate>...</to_translate> tags.
+Please translate it to {dest_lang}.
+
+<translate>
+    <context>{context or ''}</context>
+    <to_translate>{to_translate}</to_translate>
+</translate>
 """.strip()
 
     resp = complete(client=client, prompt=prompt)

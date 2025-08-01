@@ -98,6 +98,12 @@ def main() -> None:
         help="Maximum translations per minute (default: 500)",
     )
 
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force translation even if already exists",
+    )
+
     args = parser.parse_args()
     trans_dir = args.trans_dir
 
@@ -195,7 +201,7 @@ def main() -> None:
                             same_trans = to_translate == trans_entry.get("original")
                             same_model = args.model == trans_entry.get("model")
                             inputs_match = same_ctx and same_trans and same_model
-                            needs_translation = not inputs_match
+                            needs_translation = (not inputs_match) or args.force
 
                         if needs_translation and not locked:
                             try:
