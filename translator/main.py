@@ -76,10 +76,12 @@ def main() -> None:
         required=True,
         help="Directory for translations",
     )
+
+    # https://artificialanalysis.ai/leaderboards/models?open_weights=proprietary
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4.1-nano",
+        default="o4-mini",
         help="LLM model to use for translation",
     )
 
@@ -191,7 +193,8 @@ def main() -> None:
                         else:
                             same_ctx = context == trans_entry.get("ctx")
                             same_trans = to_translate == trans_entry.get("original")
-                            inputs_match = same_ctx and same_trans
+                            same_model = args.model == trans_entry.get("model")
+                            inputs_match = same_ctx and same_trans and same_model
                             needs_translation = not inputs_match
 
                         if needs_translation and not locked:
@@ -219,6 +222,7 @@ def main() -> None:
                             {
                                 "k": key,
                                 "v": updated_translation,
+                                "model": args.model,
                                 "original": to_translate,
                                 "ctx": context,
                                 "lock": locked,
