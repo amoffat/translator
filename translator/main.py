@@ -1,13 +1,13 @@
 import argparse
-from contextlib import contextmanager
 import json
 import os
 import pathlib
 import time
-from datetime import timedelta
 from collections import OrderedDict
-import dotenv
+from contextlib import contextmanager
+from datetime import timedelta
 
+import dotenv
 import openai
 from tqdm import tqdm
 
@@ -176,7 +176,6 @@ def main() -> None:
                     ns=ns,
                     translations=lang_translations,
                 ) as write:
-
                     for source_entry in entries.values():
                         key = source_entry["k"]
                         to_translate = source_entry["v"]

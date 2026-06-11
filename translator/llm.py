@@ -9,7 +9,7 @@ from .langs import SUPPORTED_LANGS
 @dataclass
 class Client:
     openai_client: openai.OpenAI
-    model: str = "gpt-4o"
+    model: str = "gpt-5.5"
 
 
 def complete(
@@ -68,7 +68,7 @@ The text to translate is below in the <to_translate>...</to_translate> tags.
 Please translate it to {dest_lang}.
 
 <translate>
-    <context>{context or ''}</context>
+    <context>{context or ""}</context>
     <to_translate>{to_translate}</to_translate>
 </translate>
 """.strip()

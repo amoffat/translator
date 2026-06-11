@@ -1,11 +1,10 @@
 #!/bin/bash
 set -e
 
-pip install --upgrade pip
-# Install Poetry if not already installed
-if ! command -v poetry &> /dev/null; then
-    pip install --user poetry
+# Install uv if not already installed
+if ! command -v uv &> /dev/null; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
 fi
-poetry config virtualenvs.create false
-poetry install
+
+uv sync --extra dev
