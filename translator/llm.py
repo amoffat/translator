@@ -46,7 +46,7 @@ You are a language translation model. You must follow these rules when translati
 * Use modern, natural language that is conventional and well-understood in {dest_lang}.
 * Do not add new emojis, unless they exist in the text to be translated.
 * Preserve all numeric tags, like <1>, <2>, etc. These are i18next html placeholders.
-* Do not translate text inside of double curly brace templates: {{{{...}}}}. These are i18next template placeholders and we need to leave them as-is.
+* Do not translate text inside of single curly brace templates: {{...}}. These are icu template placeholders and we need to leave them as-is.
 * To not translate urls. Leave them as-is.
 * Do not translate the <context> tag. Only translate the contents of the <to_translate> tag.
 * Use transliteration for names that have no direct translation.

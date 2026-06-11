@@ -81,7 +81,7 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        default="o4-mini",
+        default="gpt-5.4",
         help="LLM model to use for translation",
     )
 
@@ -115,7 +115,8 @@ def main() -> None:
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set in .env")
+        raise ValueError(
+            "OPENAI_API_KEY environment variable is not set in .env")
 
     client = llm.Client(
         openai_client=openai.OpenAI(api_key=api_key),
@@ -197,10 +198,12 @@ def main() -> None:
                             needs_translation = False
                         else:
                             same_ctx = context == trans_entry.get("ctx")
-                            same_trans = to_translate == trans_entry.get("original")
+                            same_trans = to_translate == trans_entry.get(
+                                "original")
                             same_model = args.model == trans_entry.get("model")
                             inputs_match = same_ctx and same_trans and same_model
-                            needs_translation = (not inputs_match) or args.force
+                            needs_translation = (
+                                not inputs_match) or args.force
 
                         if needs_translation and not locked:
                             try:
@@ -214,7 +217,8 @@ def main() -> None:
                                 )
                                 assert updated_translation, "Translation failed"
                             except KeyboardInterrupt:
-                                tqdm.write("Translation interrupted by user, quitting")
+                                tqdm.write(
+                                    "Translation interrupted by user, quitting")
                                 exit()
                             else:
                                 tqdm.write(
